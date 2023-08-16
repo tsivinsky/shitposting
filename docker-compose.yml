@@ -11,3 +11,12 @@ services:
     container_name: blog-db
     volumes:
       - ./db-data:/var/lib/postgresql/data
+
+  app:
+    env_file:
+      - .env
+    build: .
+    ports:
+      - 9090:9090
+    restart: always
+    container_name: blog-app
