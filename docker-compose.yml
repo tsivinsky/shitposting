@@ -1,0 +1,13 @@
+version: "3.2"
+
+services:
+  db:
+    env_file:
+      - .env
+    image: postgres:15
+    ports:
+      - 5432:5432
+    restart: always
+    container_name: blog-db
+    volumes:
+      - ./db-data:/var/lib/postgresql/data
