@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/base64"
 	"fmt"
 	"html/template"
 	"log"
@@ -25,12 +26,15 @@ type Env struct {
 	DBPassword string `env:"POSTGRES_PASSWORD,required"`
 	DBName     string `env:"POSTGRES_DB,required"`
 	DBHost     string `env:"DB_HOST,required"`
+	User       string `env:"USER,required"`
+	Password   string `env:"PASSWORD,required"`
 }
 
 var pool *sql.DB
 
+var env = new(Env)
+
 func main() {
-	env := new(Env)
 	goenv.MustLoad(env)
 
 	dsn := fmt.Sprintf("postgres://%s:%s@%s:5432/%s?sslmode=disable", env.DBUser, env.DBPassword, env.DBHost, env.DBName)
@@ -90,6 +94,24 @@ func main() {
 
 	mux.HandleFunc("/post", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "GET" {
+			a := r.Header.Get("Authorization")
+			if a == "" {
+				w.Header().Set("WWW-Authenticate", "basic realm=Restricted")
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+
+			credsCorrect, err := validateAuth(a)
+			if err != nil {
+				renderErrorPage(w, err.Error())
+				return
+			}
+
+			if !credsCorrect {
+				http.Redirect(w, r, "/", http.StatusTemporaryRedirect)
+				return
+			}
+
 			tmpl, err := template.ParseFiles("./views/create-post.html")
 			if err != nil {
 				renderErrorPage(w, "error happened, sorry")
@@ -117,7 +139,7 @@ func main() {
 		}
 	})
 
-	log.Fatal(http.ListenAndServe(":5000", mux))
+	log.Fatal(http.ListenAndServe(":9090", mux))
 }
 
 func findPosts() ([]Post, error) {
@@ -178,4 +200,19 @@ func renderErrorPage(w http.ResponseWriter, message string) error {
 	return tmpl.Execute(w, map[string]string{
 		"Error": message,
 	})
+}
+
+func validateAuth(auth string) (bool, error) {
+	s := strings.Split(auth, " ")
+	data, err := base64.StdEncoding.DecodeString(s[1])
+	if err != nil {
+		return false, err
+	}
+	decoded := string(data)
+
+	a := strings.Split(decoded, ":")
+	user := a[0]
+	password := a[1]
+
+	return user == env.User && password == env.Password, nil
 }
