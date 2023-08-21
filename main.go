@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/tsivinsky/goenv"
 
@@ -15,10 +16,11 @@ import (
 )
 
 type Post struct {
-	ID    int    `json:"id"`
-	Title string `json:"title"`
-	Slug  string `json:"slug"`
-	Body  string `json:"body"`
+	ID      int    `json:"id"`
+	Title   string `json:"title"`
+	Slug    string `json:"slug"`
+	Body    string `json:"body"`
+	Created string `json:"created"`
 }
 
 type Env struct {
@@ -143,7 +145,7 @@ func main() {
 }
 
 func findPosts() ([]Post, error) {
-	rows, err := pool.Query("select * from posts;")
+	rows, err := pool.Query("select * from posts order by created desc;")
 	if err != nil {
 		return nil, err
 	}
@@ -153,7 +155,7 @@ func findPosts() ([]Post, error) {
 
 	for rows.Next() {
 		post := new(Post)
-		err = rows.Scan(&post.ID, &post.Title, &post.Slug, &post.Body)
+		err = rows.Scan(&post.ID, &post.Title, &post.Slug, &post.Body, &post.Created)
 		if err != nil {
 			return nil, err
 		}
@@ -174,7 +176,7 @@ func findPostBySlug(slug string) (*Post, error) {
 	rows.Next()
 
 	var post Post
-	err = rows.Scan(&post.ID, &post.Title, &post.Slug, &post.Body)
+	err = rows.Scan(&post.ID, &post.Title, &post.Slug, &post.Body, &post.Created)
 	if err != nil {
 		return nil, err
 	}
@@ -183,7 +185,8 @@ func findPostBySlug(slug string) (*Post, error) {
 }
 
 func createPost(title, slug, body string) error {
-	_, err := pool.Exec("insert into posts (title, slug, body) values ($1, $2, $3);", title, slug, body)
+	created := time.Now().Format(time.RFC3339)
+	_, err := pool.Exec("insert into posts (title, slug, body, created) values ($1, $2, $3, $4);", title, slug, body, created)
 	if err != nil {
 		return err
 	}
