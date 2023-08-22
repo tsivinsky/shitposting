@@ -1,6 +1,7 @@
 package main
 
 import (
+	"blog/db"
 	"database/sql"
 	"encoding/base64"
 	"fmt"
@@ -8,20 +9,11 @@ import (
 	"log"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/tsivinsky/goenv"
 
 	_ "github.com/lib/pq"
 )
-
-type Post struct {
-	ID      int    `json:"id"`
-	Title   string `json:"title"`
-	Slug    string `json:"slug"`
-	Body    string `json:"body"`
-	Created string `json:"created"`
-}
 
 type Env struct {
 	DBUser     string `env:"POSTGRES_USER,required"`
@@ -57,7 +49,7 @@ func main() {
 			return
 		}
 
-		posts, err := findPosts()
+		posts, err := db.FindPosts(pool)
 		if err != nil {
 			fmt.Printf("err: %v\n", err)
 			renderErrorPage(w, "couldn't find posts")
@@ -65,7 +57,7 @@ func main() {
 		}
 
 		tmpl.Execute(w, struct {
-			Posts []Post
+			Posts []db.Post
 		}{
 			Posts: posts,
 		})
@@ -74,7 +66,7 @@ func main() {
 	mux.HandleFunc("/p/", func(w http.ResponseWriter, r *http.Request) {
 		slug := strings.Split(r.URL.Path, "/")[1:][1]
 
-		post, err := findPostBySlug(slug)
+		post, err := db.FindPostBySlug(pool, slug)
 		if err != nil {
 			renderErrorPage(w, "couldn't find post")
 			return
@@ -129,7 +121,7 @@ func main() {
 			slug := r.FormValue("slug")
 			body := r.FormValue("body")
 
-			err := createPost(title, slug, body)
+			err := db.CreatePost(pool, title, slug, body)
 			if err != nil {
 				fmt.Printf("err: %v\n", err)
 				renderErrorPage(w, "error while creating post")
@@ -142,56 +134,6 @@ func main() {
 	})
 
 	log.Fatal(http.ListenAndServe(":9090", mux))
-}
-
-func findPosts() ([]Post, error) {
-	rows, err := pool.Query("select * from posts order by created desc;")
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var posts []Post
-
-	for rows.Next() {
-		post := new(Post)
-		err = rows.Scan(&post.ID, &post.Title, &post.Slug, &post.Body, &post.Created)
-		if err != nil {
-			return nil, err
-		}
-
-		posts = append(posts, *post)
-	}
-
-	return posts, nil
-}
-
-func findPostBySlug(slug string) (*Post, error) {
-	rows, err := pool.Query("select * from posts where slug = $1;", slug)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	rows.Next()
-
-	var post Post
-	err = rows.Scan(&post.ID, &post.Title, &post.Slug, &post.Body, &post.Created)
-	if err != nil {
-		return nil, err
-	}
-
-	return &post, nil
-}
-
-func createPost(title, slug, body string) error {
-	created := time.Now().Format(time.RFC3339)
-	_, err := pool.Exec("insert into posts (title, slug, body, created) values ($1, $2, $3, $4);", title, slug, body, created)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func renderErrorPage(w http.ResponseWriter, message string) error {
